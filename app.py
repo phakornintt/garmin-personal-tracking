@@ -93,7 +93,7 @@ def make_pace_relationship_chart(data, x_field, x_title, x_format):
         axis=alt.Axis(labelExpr=PACE_AXIS_LABEL),
         scale=alt.Scale(reverse=True),
     )
-    points = base.mark_circle(size=85, opacity=0.75, color="#4c78a8").encode(
+    points = base.mark_circle(size=85, opacity=0.75, color="#c45a32").encode(
         x=x,
         y=y,
         tooltip=[
@@ -115,9 +115,9 @@ def make_pace_relationship_chart(data, x_field, x_title, x_format):
 
 PACE_AXIS_LABEL = "floor(round(datum.value * 60) / 60) + ':' + (round(datum.value * 60) % 60 < 10 ? '0' : '') + (round(datum.value * 60) % 60)"
 
-st.set_page_config(page_title="Garmin Running Progress", page_icon="🏃", layout="wide")
-st.title("Garmin Running Progress")
-st.caption("Track running pace and heart rate over time")
+st.set_page_config(page_title="Garmin Running Progress", page_icon=":material/directions_run:", layout="wide")
+st.title("Running progress")
+st.caption("Your training at a glance · pace, effort, and weekly volume")
 
 if not CSV_PATH.exists():
     st.info("No run data yet. Set up your Garmin Personal API key, then run `garmin-runs sync`.")
@@ -145,12 +145,19 @@ run_count = len(data)
 latest = data.iloc[-1]
 
 metric_columns = st.columns(4)
-metric_columns[0].metric("Runs", f"{run_count}")
-metric_columns[1].metric("Total distance", f"{total_km:.1f} km")
-metric_columns[2].metric("Latest average pace", format_pace(latest["average_pace_min_per_km"]) if pd.notna(latest["average_pace_min_per_km"]) else "—")
-metric_columns[3].metric("Pace at max speed", format_pace(latest["max_pace_min_per_km"]) if pd.notna(latest["max_pace_min_per_km"]) else "—")
+metric_values = [
+    ("Runs", f"{run_count}"),
+    ("Total distance", f"{total_km:.1f} km"),
+    ("Latest average pace", format_pace(latest["average_pace_min_per_km"]) if pd.notna(latest["average_pace_min_per_km"]) else "—"),
+    ("Pace at max speed", format_pace(latest["max_pace_min_per_km"]) if pd.notna(latest["max_pace_min_per_km"]) else "—"),
+]
+for column, (label, value) in zip(metric_columns, metric_values):
+    with column:
+        with st.container(border=True):
+            st.metric(label, value)
 
-st.subheader("Pace and heart rate over time")
+st.header("Training trends")
+st.subheader(":material/timeline: Pace and heart rate")
 st.caption("Activities are ordered by date. Lower pace means faster running; dashed lines show linear trends.")
 pace_data = data.dropna(subset=["average_pace_min_per_km"]).copy()
 pace_data["Pace label"] = pace_data["average_pace_min_per_km"].map(format_pace)
@@ -209,7 +216,7 @@ pace_chart = make_hover_chart(
         scale=alt.Scale(domainMin=pace_y_start),
     ),
     alt.X("start_time:T", title=None, axis=alt.Axis(labels=False, ticks=False)),
-    "#4c78a8",
+    "#c45a32",
     "Average pace (min/km)",
     ".2f",
     shared_hover,
@@ -222,7 +229,7 @@ hr_chart = make_hover_chart(
     "average_hr_bpm",
     alt.Y("average_hr_bpm:Q", title="Average heart rate (bpm)", scale=alt.Scale(domainMin=hr_y_start)),
     alt.X("start_time:T", title="Run date", axis=alt.Axis(format="%b %d", labelAngle=-45)),
-    "#e45756",
+    "#277c72",
     "Average heart rate (bpm)",
     ".0f",
     shared_hover,
@@ -232,10 +239,10 @@ hr_chart = make_hover_chart(
 st.altair_chart(
     alt.vconcat(pace_chart, hr_chart)
     .resolve_scale(x="shared", y="independent"),
-    use_container_width=True,
+    width="stretch",
 )
 
-st.subheader("Weekly running volume")
+st.subheader(":material/bar_chart: Weekly running volume")
 weekly_data = data.drop_duplicates(subset=["activity_id"]).copy()
 weekly_data["week_start"] = weekly_data["start_time"].dt.normalize() - pd.to_timedelta(
     weekly_data["start_time"].dt.day_of_week,
@@ -261,9 +268,10 @@ weekly_chart = alt.Chart(weekly).mark_bar().encode(
         alt.Tooltip("runs:Q", title="Runs per week", format=".0f"),
     ],
 )
-st.altair_chart(weekly_chart, use_container_width=True)
+st.altair_chart(weekly_chart, width="stretch")
 
-st.subheader("Pace by distance and effort")
+st.header("Run insights")
+st.subheader(":material/insights: Pace by distance and effort")
 st.caption("Each point is one run. Pace is inverted so faster runs appear higher; dashed lines show linear trends.")
 distance_pace = data.dropna(subset=["distance_km", "average_pace_min_per_km"]).copy()
 distance_pace["Pace label"] = distance_pace["average_pace_min_per_km"].map(format_pace)
@@ -271,25 +279,25 @@ effort_pace = data.dropna(subset=["average_hr_bpm", "average_pace_min_per_km"]).
 effort_pace["Pace label"] = effort_pace["average_pace_min_per_km"].map(format_pace)
 relationship_columns = st.columns(2)
 with relationship_columns[0]:
-    st.caption("Run distance vs average pace")
+    st.markdown(":material/directions_run: Run distance vs average pace")
     if distance_pace.empty:
         st.info("Distance and pace values are needed to compare runs.")
     else:
         st.altair_chart(
             make_pace_relationship_chart(distance_pace, "distance_km", "Distance (km)", ".1f"),
-            use_container_width=True,
+            width="stretch",
         )
 with relationship_columns[1]:
-    st.caption("Average heart rate vs average pace")
+    st.markdown(":material/favorite: Average heart rate vs average pace")
     if effort_pace.empty:
         st.info("Heart-rate and pace values are needed to compare runs.")
     else:
         st.altair_chart(
             make_pace_relationship_chart(effort_pace, "average_hr_bpm", "Average heart rate (bpm)", ".0f"),
-            use_container_width=True,
+            width="stretch",
         )
 
-st.subheader("Recent runs")
+st.header("Recent runs")
 display = data.sort_values("start_time", ascending=False).head(20).copy()
 display["start_time"] = display["start_time"].dt.strftime("%Y-%m-%d")
 display["average_pace_min_per_km"] = display["average_pace_min_per_km"].map(
@@ -301,5 +309,5 @@ display["max_pace_min_per_km"] = display["max_pace_min_per_km"].map(
 st.dataframe(
     display[["start_time", "activity_name", "distance_km", "average_pace_min_per_km", "max_pace_min_per_km", "average_hr_bpm", "max_hr_bpm"]],
     hide_index=True,
-    use_container_width=True,
+    width="stretch",
 )

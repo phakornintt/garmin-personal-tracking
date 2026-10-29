@@ -63,6 +63,8 @@ streamlit run app.py --server.address 127.0.0.1
 
 Open `http://127.0.0.1:8501` in your browser. The server listens on localhost only. Stop it with `Ctrl+C`. The dashboard shows total runs and distance, latest average and maximum-speed pace, aligned daily pace and heart-rate charts with combined hover details, weekly distance with the run count in each bar's tooltip, pace by distance and heart rate, and recent activities. Pace y-axis labels use minutes:seconds per kilometer; the embedded stepper adjusts the starting value by 30 seconds.
 
+The dashboard theme is configured in `.streamlit/config.toml`, with coordinated light and dark color palettes.
+
 ## CSV fields
 
 `data/runs.csv` contains one row per run: activity ID, start time, activity name, distance in kilometers, duration in seconds, average and maximum speed in meters per second, average and maximum pace in minutes per kilometer, and average and maximum heart rate in beats per minute. Pace and heart-rate fields are left blank when Garmin does not provide the source values.
