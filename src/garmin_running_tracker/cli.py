@@ -19,8 +19,8 @@ def main() -> None:
     sync_parser.add_argument(
         "--start-date",
         type=date.fromisoformat,
-        default=INITIAL_SYNC_START,
-        help="Earliest date to include (default: 2026-09-30).",
+        default=None,
+        help="Earliest date to include (default: 2026-09-29).",
     )
     sync_parser.add_argument("--end-date", type=date.fromisoformat, help="Latest date to include (default: today).")
     args = parser.parse_args()

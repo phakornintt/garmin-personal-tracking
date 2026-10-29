@@ -13,8 +13,10 @@ CSV_FIELDS = [
     "activity_name",
     "distance_km",
     "duration_seconds",
-    "pace_min_per_km",
-    "speed_kmh",
+    "averageSpeed",
+    "maxSpeed",
+    "average_pace_min_per_km",
+    "max_pace_min_per_km",
     "average_hr_bpm",
     "max_hr_bpm",
 ]
@@ -27,7 +29,15 @@ def read_activities(path: Path) -> list[dict[str, str]]:
         reader = csv.DictReader(csv_file)
         if not reader.fieldnames:
             return []
-        return [dict(row) for row in reader]
+        rows = [dict(row) for row in reader]
+        for row in rows:
+            row.setdefault("averageSpeed", "")
+            row.setdefault("maxSpeed", "")
+            row.setdefault("average_pace_min_per_km", "")
+            row.setdefault("max_pace_min_per_km", "")
+            row.pop("pace_min_per_km", None)
+            row.pop("speed_kmh", None)
+        return rows
 
 
 def write_activities(path: Path, activities: list[dict[str, str]]) -> None:

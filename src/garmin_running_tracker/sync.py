@@ -8,7 +8,7 @@ from typing import Any
 
 from .csv_store import read_activities, write_activities
 
-INITIAL_SYNC_START = date(2026, 9, 30)
+INITIAL_SYNC_START = date(2026, 9, 29)
 PAGE_SIZE = 100
 
 
@@ -69,8 +69,8 @@ def normalize_activity(summary: dict[str, Any], details: dict[str, Any] | None =
     distance_m = _as_float(_first(merged, "distance", "totalDistance", "distanceInMeters"))
     duration_s = _as_float(_first(merged, "duration", "elapsedDuration", "movingDuration"))
     distance_km = distance_m / 1000 if distance_m is not None else None
-    pace = duration_s / 60 / distance_km if duration_s and distance_km else None
-    speed = distance_km / duration_s * 3600 if duration_s and distance_km else None
+    average_speed = _first(merged, "averageSpeed")
+    max_speed = _first(merged, "maxSpeed")
     average_hr = _as_float(_first(merged, "averageHR", "avgHR", "averageHeartRate"))
     maximum_hr = _as_float(_first(merged, "maxHR", "maximumHR", "maxHeartRate"))
     name = _first(merged, "activityName", "name", "activity_name") or ""
@@ -78,14 +78,20 @@ def normalize_activity(summary: dict[str, Any], details: dict[str, Any] | None =
     def formatted(value: float | None, places: int = 2) -> str:
         return "" if value is None else f"{value:.{places}f}"
 
+    def pace_from_speed(speed: Any) -> str:
+        speed_mps = _as_float(speed)
+        return "" if speed_mps is None or speed_mps <= 0 else formatted(1000 / speed_mps / 60)
+
     return {
         "activity_id": identifier,
         "start_time": started,
         "activity_name": str(name),
         "distance_km": formatted(distance_km),
         "duration_seconds": formatted(duration_s, 1),
-        "pace_min_per_km": formatted(pace),
-        "speed_kmh": formatted(speed),
+        "averageSpeed": "" if average_speed is None else str(average_speed),
+        "maxSpeed": "" if max_speed is None else str(max_speed),
+        "average_pace_min_per_km": pace_from_speed(average_speed),
+        "max_pace_min_per_km": pace_from_speed(max_speed),
         "average_hr_bpm": formatted(average_hr, 0),
         "max_hr_bpm": formatted(maximum_hr, 0),
     }
@@ -110,10 +116,13 @@ def sync_activities(csv_path: Path, start_date: date | None = None, end_date: da
         raise RuntimeError("Install project dependencies first: python -m pip install -e .") from exc
 
     existing = read_activities(csv_path)
-    latest_date = max((row.get("start_time", "")[:10] for row in existing if row.get("start_time")), default="")
-    requested_start = start_date or INITIAL_SYNC_START
-    if latest_date:
-        requested_start = max(requested_start, date.fromisoformat(latest_date))
+    stored_dates = [date.fromisoformat(row["start_time"][:10]) for row in existing if row.get("start_time")]
+    if start_date is not None:
+        requested_start = max(start_date, INITIAL_SYNC_START)
+    elif stored_dates and min(stored_dates) > INITIAL_SYNC_START:
+        requested_start = INITIAL_SYNC_START
+    else:
+        requested_start = max(max(stored_dates, default=INITIAL_SYNC_START), INITIAL_SYNC_START)
     requested_end = end_date or date.today()
     if requested_start > requested_end:
         print(f"Already up to date through {requested_end.isoformat()}.")
