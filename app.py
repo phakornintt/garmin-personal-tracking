@@ -6,8 +6,13 @@ from pathlib import Path
 import altair as alt
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 CSV_PATH = Path(__file__).parent / "data" / "runs.csv"
+PACE_STEPPER = components.declare_component(
+    "pace_stepper",
+    path=str(Path(__file__).parent / "components" / "pace_stepper"),
+)
 
 
 def format_pace(pace_min_per_km: float) -> str:
@@ -52,12 +57,18 @@ def make_hover_chart(
         if tooltip_field
         else alt.Tooltip(field, title=tooltip_title, format=tooltip_format)
     )
+    paired_value = (
+        alt.Tooltip("average_hr_bpm:Q", title="Average heart rate (bpm)", format=".0f")
+        if field == "average_pace_min_per_km"
+        else alt.Tooltip("Pace label:N", title="Average pace")
+    )
     selector = base.mark_point(size=180, opacity=0, cursor="pointer").encode(
         x=x_encoding,
         y=y_encoding,
         tooltip=[
             alt.Tooltip("start_time:T", title="Date"),
             tooltip_value,
+            paired_value,
         ],
     ).add_params(hover)
     highlighted_point = base.mark_point(size=90, color=color).encode(
@@ -71,6 +82,35 @@ def make_hover_chart(
     ).transform_filter(hover)
     layers.extend([selector, highlighted_point, guide])
     return alt.layer(*layers).properties(height=180)
+
+
+def make_pace_relationship_chart(data, x_field, x_title, x_format):
+    base = alt.Chart(data)
+    x = alt.X(f"{x_field}:Q", title=x_title)
+    y = alt.Y(
+        "average_pace_min_per_km:Q",
+        title="Average pace (min/km)",
+        axis=alt.Axis(labelExpr=PACE_AXIS_LABEL),
+        scale=alt.Scale(reverse=True),
+    )
+    points = base.mark_circle(size=85, opacity=0.75, color="#4c78a8").encode(
+        x=x,
+        y=y,
+        tooltip=[
+            alt.Tooltip("start_time:T", title="Date"),
+            alt.Tooltip(x_field, title=x_title, format=x_format),
+            alt.Tooltip("Pace label:N", title="Average pace"),
+            alt.Tooltip("average_hr_bpm:Q", title="Average heart rate", format=".0f"),
+        ],
+    )
+    layers = [points]
+    if data[x_field].nunique() > 1:
+        layers.append(
+            base.transform_regression(on=x_field, regression="average_pace_min_per_km")
+            .mark_line(color="#777777", strokeDash=[6, 4], size=1.5)
+            .encode(x=x, y=y)
+        )
+    return alt.layer(*layers).properties(height=240)
 
 
 PACE_AXIS_LABEL = "floor(round(datum.value * 60) / 60) + ':' + (round(datum.value * 60) % 60 < 10 ? '0' : '') + (round(datum.value * 60) % 60)"
@@ -115,6 +155,9 @@ st.caption("Activities are ordered by date. Lower pace means faster running; das
 pace_data = data.dropna(subset=["average_pace_min_per_km"]).copy()
 pace_data["Pace label"] = pace_data["average_pace_min_per_km"].map(format_pace)
 hr_data = data.dropna(subset=["average_hr_bpm"]).copy()
+hr_data["Pace label"] = hr_data["average_pace_min_per_km"].map(
+    lambda pace: format_pace(pace) if pd.notna(pace) else "—"
+)
 shared_hover = alt.selection_point(
     name="run_hover",
     nearest=True,
@@ -125,26 +168,34 @@ shared_hover = alt.selection_point(
     resolve="global",
 )
 
-pace_hr_columns = st.columns(2)
+pace_hr_columns = st.columns(2, vertical_alignment="bottom")
 with pace_hr_columns[0]:
     pace_start_default = max(0.0, floor(pace_data["average_pace_min_per_km"].min()) - 1) if not pace_data.empty else 0.0
-    pace_start_text = st.text_input(
-        "Pace y-axis starts at (m:ss min/km)",
-        value=format_pace(pace_start_default).removesuffix(" min/km"),
-        help="Enter minutes:seconds, for example 7:30. Runs with a slower pace may be clipped.",
+    pace_default_text = format_pace(pace_start_default).removesuffix(" min/km")
+    pace_start_key = "pace_y_axis_custom_stepper"
+    st.caption("Pace y-axis starts at (m:ss min/km)")
+    pace_text = PACE_STEPPER(
+        value=st.session_state.get(pace_start_key, pace_default_text),
+        step_seconds=30,
+        key=pace_start_key,
+        default=pace_default_text,
     )
-    pace_y_start = parse_pace(pace_start_text)
+    if not isinstance(pace_text, str):
+        pace_text = pace_default_text
+    pace_y_start = parse_pace(pace_text)
     if pace_y_start is None or pace_y_start > 100:
         st.error("Enter pace as minutes:seconds, such as 7:30.")
         pace_y_start = float(pace_start_default)
 with pace_hr_columns[1]:
     hr_start_default = max(0, floor(hr_data["average_hr_bpm"].min() / 10) * 10 - 10) if not hr_data.empty else 0
+    st.caption("Heart-rate y-axis starts at (bpm)")
     hr_y_start = st.number_input(
-        "Heart-rate y-axis starts at (bpm)",
+        "Heart-rate y-axis start",
         min_value=0,
         max_value=300,
         value=int(hr_start_default),
         step=5,
+        label_visibility="collapsed",
         help="Runs with a lower heart rate than this value may be clipped from the chart.",
     )
 
@@ -185,12 +236,58 @@ st.altair_chart(
 )
 
 st.subheader("Weekly running volume")
-weekly = data.set_index("start_time")["distance_km"].resample("W-MON").sum().rename("Distance (km)")
-weekly_chart = alt.Chart(weekly.rename_axis("start_time").reset_index()).mark_bar().encode(
-    x=alt.X("start_time:T", title="Week"),
-    y=alt.Y("Distance (km):Q", title="Distance (km)", scale=alt.Scale(domainMin=0)),
+weekly_data = data.drop_duplicates(subset=["activity_id"]).copy()
+weekly_data["week_start"] = weekly_data["start_time"].dt.normalize() - pd.to_timedelta(
+    weekly_data["start_time"].dt.day_of_week,
+    unit="D",
+)
+weekly = (
+    weekly_data.groupby("week_start", as_index=False)
+    .agg(distance_km=("distance_km", "sum"), runs=("activity_id", "nunique"))
+    .sort_values("week_start")
+)
+weekly["week_label"] = weekly["week_start"].dt.strftime("%b %d")
+weekly_chart = alt.Chart(weekly).mark_bar().encode(
+    x=alt.X(
+        "week_label:O",
+        title="Week starting",
+        sort=alt.SortField(field="week_start", order="ascending"),
+        axis=alt.Axis(labelAngle=0, labelOverlap="greedy"),
+    ),
+    y=alt.Y("distance_km:Q", title="Distance (km)", scale=alt.Scale(domainMin=0)),
+    tooltip=[
+        alt.Tooltip("week_start:T", title="Week starting"),
+        alt.Tooltip("distance_km:Q", title="Distance (km)", format=".1f"),
+        alt.Tooltip("runs:Q", title="Runs per week", format=".0f"),
+    ],
 )
 st.altair_chart(weekly_chart, use_container_width=True)
+
+st.subheader("Pace by distance and effort")
+st.caption("Each point is one run. Pace is inverted so faster runs appear higher; dashed lines show linear trends.")
+distance_pace = data.dropna(subset=["distance_km", "average_pace_min_per_km"]).copy()
+distance_pace["Pace label"] = distance_pace["average_pace_min_per_km"].map(format_pace)
+effort_pace = data.dropna(subset=["average_hr_bpm", "average_pace_min_per_km"]).copy()
+effort_pace["Pace label"] = effort_pace["average_pace_min_per_km"].map(format_pace)
+relationship_columns = st.columns(2)
+with relationship_columns[0]:
+    st.caption("Run distance vs average pace")
+    if distance_pace.empty:
+        st.info("Distance and pace values are needed to compare runs.")
+    else:
+        st.altair_chart(
+            make_pace_relationship_chart(distance_pace, "distance_km", "Distance (km)", ".1f"),
+            use_container_width=True,
+        )
+with relationship_columns[1]:
+    st.caption("Average heart rate vs average pace")
+    if effort_pace.empty:
+        st.info("Heart-rate and pace values are needed to compare runs.")
+    else:
+        st.altair_chart(
+            make_pace_relationship_chart(effort_pace, "average_hr_bpm", "Average heart rate (bpm)", ".0f"),
+            use_container_width=True,
+        )
 
 st.subheader("Recent runs")
 display = data.sort_values("start_time", ascending=False).head(20).copy()

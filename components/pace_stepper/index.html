@@ -1,0 +1,127 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 38px; margin: 0; padding: 0; overflow: hidden; background: transparent; }
+      body { font-family: var(--font, sans-serif); }
+      .stepper {
+        display: flex;
+        width: 100%;
+        height: 38px;
+        overflow: hidden;
+        border: 1px solid var(--border, #d0d0d0);
+        border-radius: 0.375rem;
+        background: var(--background, #fff);
+        color: var(--text, #31333f);
+        transition: border-color 120ms ease, box-shadow 120ms ease;
+      }
+      .stepper:focus-within { border-color: var(--primary, #ff4b4b); box-shadow: 0 0 0 1px var(--primary, #ff4b4b); }
+      input {
+        flex: 1;
+        min-width: 0;
+        border: 0;
+        outline: 0;
+        padding: 0 0.875rem;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        font-size: 0.95rem;
+      }
+      .buttons { display: flex; width: 2.25rem; flex: 0 0 2.25rem; flex-direction: column; border-left: 1px solid var(--border, #d0d0d0); }
+      button {
+        flex: 1;
+        border: 0;
+        padding: 0;
+        background: var(--button, #f0f2f6);
+        color: inherit;
+        line-height: 1;
+        font: inherit;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 100ms ease;
+      }
+      button + button { border-top: 1px solid var(--border, #d0d0d0); }
+      button:hover { background: var(--hover, #e6e9ef); }
+      button:focus-visible { outline: 2px solid var(--primary, #ff4b4b); outline-offset: -2px; }
+      button:disabled { color: var(--muted, #999); cursor: default; }
+    </style>
+  </head>
+  <body>
+    <div class="stepper">
+      <input aria-label="Pace y-axis start in minutes and seconds per kilometer" type="text" inputmode="numeric" placeholder="7:30" />
+      <div class="buttons">
+        <button aria-label="Increase pace axis start" title="Increase by 30 seconds" type="button">+</button>
+        <button aria-label="Decrease pace axis start" title="Decrease by 30 seconds" type="button">−</button>
+      </div>
+    </div>
+    <script>
+      const input = document.querySelector("input");
+      const buttons = [...document.querySelectorAll("button")];
+      let stepSeconds = 30;
+
+      function parsePace(value) {
+        const match = /^(\d+):(\d{2})$/.exec(value.trim());
+        if (!match || Number(match[2]) >= 60) return null;
+        return Number(match[1]) * 60 + Number(match[2]);
+      }
+
+      function formatPace(seconds) {
+        return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+      }
+
+      function sendValue() {
+        window.parent.postMessage({
+          isStreamlitMessage: true,
+          type: "streamlit:setComponentValue",
+          value: input.value,
+        }, "*");
+      }
+
+      input.addEventListener("change", sendValue);
+      buttons[0].addEventListener("click", () => {
+        const current = parsePace(input.value);
+        if (current !== null) {
+          input.value = formatPace(current + stepSeconds);
+          sendValue();
+        }
+      });
+      buttons[1].addEventListener("click", () => {
+        const current = parsePace(input.value);
+        if (current !== null) {
+          input.value = formatPace(Math.max(0, current - stepSeconds));
+          sendValue();
+        }
+      });
+
+      window.addEventListener("message", (event) => {
+        if (!event.data || event.data.type !== "streamlit:render") return;
+        const args = event.data.args || {};
+        stepSeconds = Number(args.step_seconds) || 30;
+        if (document.activeElement !== input && typeof args.value === "string") input.value = args.value;
+        const theme = event.data.theme || {};
+        document.documentElement.style.setProperty("--background", theme.backgroundColor || "#fff");
+        document.documentElement.style.setProperty("--button", theme.secondaryBackgroundColor || "#f0f2f6");
+        document.documentElement.style.setProperty("--text", theme.textColor || "#31333f");
+        document.documentElement.style.setProperty("--primary", theme.primaryColor || "#ff4b4b");
+        document.documentElement.style.setProperty("--border", theme.borderColor || "#d0d0d0");
+        document.documentElement.style.setProperty("--hover", theme.secondaryBackgroundColor || "#e6e9ef");
+        document.documentElement.style.setProperty("--muted", theme.textColor ? `${theme.textColor}80` : "#999");
+        document.documentElement.style.setProperty("--font", theme.font || "sans-serif");
+      });
+
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: "streamlit:componentReady",
+        apiVersion: 1,
+      }, "*");
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: "streamlit:setFrameHeight",
+        height: 38,
+      }, "*");
+    </script>
+  </body>
+</html>

@@ -61,7 +61,7 @@ source .venv/bin/activate
 streamlit run app.py --server.address 127.0.0.1
 ```
 
-Open `http://127.0.0.1:8501` in your browser. The server listens on localhost only. Stop it with `Ctrl+C`. The dashboard shows total runs and distance, latest average and maximum-speed pace, aligned daily pace and heart-rate charts with trend lines, weekly distance, and recent activities. You can set the starting value for each chart's y-axis. Pace is displayed in minutes per kilometer.
+Open `http://127.0.0.1:8501` in your browser. The server listens on localhost only. Stop it with `Ctrl+C`. The dashboard shows total runs and distance, latest average and maximum-speed pace, aligned daily pace and heart-rate charts with combined hover details, weekly distance with the run count in each bar's tooltip, pace by distance and heart rate, and recent activities. Pace y-axis labels use minutes:seconds per kilometer; the embedded stepper adjusts the starting value by 30 seconds.
 
 ## CSV fields
 
