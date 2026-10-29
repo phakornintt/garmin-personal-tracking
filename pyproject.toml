@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "garmin-running-tracker"
+version = "0.1.0"
+description = "A local Garmin running performance tracker"
+requires-python = ">=3.12"
+dependencies = [
+    "garmin-connect-personal-api-python>=0.1.0",
+    "pandas>=2.2",
+    "streamlit>=1.40",
+]
+
+[project.scripts]
+garmin-runs = "garmin_running_tracker.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
