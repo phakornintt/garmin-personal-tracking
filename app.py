@@ -186,7 +186,11 @@ st.altair_chart(
 
 st.subheader("Weekly running volume")
 weekly = data.set_index("start_time")["distance_km"].resample("W-MON").sum().rename("Distance (km)")
-st.bar_chart(weekly)
+weekly_chart = alt.Chart(weekly.rename_axis("start_time").reset_index()).mark_bar().encode(
+    x=alt.X("start_time:T", title="Week"),
+    y=alt.Y("Distance (km):Q", title="Distance (km)", scale=alt.Scale(domainMin=0)),
+)
+st.altair_chart(weekly_chart, use_container_width=True)
 
 st.subheader("Recent runs")
 display = data.sort_values("start_time", ascending=False).head(20).copy()
